@@ -1,11 +1,11 @@
-import { backendNotConfigured } from "./apiClient";
-
-// GET /directory
+/**
+ * Recipient service (legacy resolution decoupled).
+ * CircularRoute now delegates recipient matching and email resolution to downstream services.
+ */
 export async function listDirectory() {
   return [];
 }
 
-// POST /recipients/resolve  { phrase, departments, roles }
-export async function resolveRecipients({ phrase, departments = [], roles = [] }) {
-  return backendNotConfigured();
+export async function resolveRecipients() {
+  return { totalCount: 0, resolvedCount: 0, recipients: [] };
 }

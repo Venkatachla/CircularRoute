@@ -14,4 +14,15 @@ describe("App routing", () => {
 
     expect(matches.at(-1)?.routeId).not.toBe(rootRouteId);
   });
+
+  it("does not match /directory as a registered route", () => {
+    const router = createRouter({ routeTree, context: { queryClient: new QueryClient() } });
+
+    const matches = router.matchRoutes("/directory");
+    const matchedRouteId = matches.at(-1)?.routeId;
+
+    // /directory must not be matched as an active application page
+    expect(matchedRouteId).not.toBe("/_shell/directory");
+    expect(matchedRouteId).not.toBe("/directory");
+  });
 });

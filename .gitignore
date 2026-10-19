@@ -1,0 +1,78 @@
+# Python bytecode & runtime caches
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Python virtual environments
+venv/
+.venv/
+env/
+ENV/
+backend/venv/
+backend/.venv/
+
+# Testing & coverage caches
+.pytest_cache/
+backend/.pytest_cache/
+.coverage
+htmlcov/
+
+# Node.js dependencies
+node_modules/
+frontend/node_modules/
+
+# Frontend build outputs & caches
+.output/
+dist/
+dist-ssr/
+.vinxi/
+.tanstack/
+.nitro/
+.wrangler/
+frontend/.output/
+frontend/dist/
+frontend/.tanstack/
+frontend/.wrangler/
+
+# Environment files & secrets
+.env
+.env.local
+.env.*.local
+.dev.vars
+backend/.env
+
+# Uploaded documents & structured outputs (confidential circulars and output JSON)
+/uploads/
+/outputs/
+backend/uploads/*
+!backend/uploads/.gitkeep
+backend/outputs/*
+!backend/outputs/.gitkeep
+
+# Diagnostics & image crops
+diagnostics/
+backend/diagnostics/
+
+# Institutional directory data (exclude local personal records)
+data/
+backend/data/
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+
+# OS & Editor metadata
+.DS_Store
+Thumbs.db
+.vscode/*
+!.vscode/extensions.json
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?

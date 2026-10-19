@@ -1,48 +1,66 @@
-import { useState } from "react";
-import { motion, AnimatePresence } from "motion/react";
-import { Quote, ArrowDown, Check, X, ChevronDown, Mail, BadgeCheck } from "lucide-react";
+import { motion } from "motion/react";
+import { Check, FileText, PenTool, AlertCircle, Quote } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { deptName } from "@/utils/format";
 import ConfidenceScore from "./ConfidenceScore";
 
-export function RecipientCard({ person, index = 0 }) {
-  const [open, setOpen] = useState(false);
-  const ok = Object.values(person.checks).every(Boolean);
+export function RecipientCard({ recipient, index = 0 }) {
+  const isHandwritten = recipient.type === "handwritten";
+  const confidenceVal = recipient.confidence
+    ? Math.round(recipient.confidence <= 1 ? recipient.confidence * 100 : recipient.confidence)
+    : null;
+
   return (
     <motion.li
-      initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: index * 0.04 }}
-      className="rounded-lg border bg-card"
+      initial={{ opacity: 0, y: 6 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay: index * 0.03 }}
+      className="rounded-lg border bg-card p-3 shadow-xs"
     >
-      <button onClick={() => setOpen(!open)} aria-expanded={open} className="flex w-full items-center gap-3 p-3 text-left">
-        <span className={cn("flex size-6 shrink-0 items-center justify-center rounded-full", ok ? "bg-success-soft text-success" : "bg-warning-soft text-warning")}>
-          {ok ? <Check className="size-3.5" strokeWidth={2.5} /> : <X className="size-3.5" />}
-        </span>
-        <div className="min-w-0 flex-1">
-          <div className="truncate text-sm font-medium">{person.name}</div>
-          <div className="truncate text-xs text-muted-foreground">{person.role} · {person.dept}</div>
-        </div>
-        <span className="hidden items-center gap-1 font-mono text-xs text-muted-foreground sm:flex"><Mail className="size-3" />{person.email}</span>
-        <ConfidenceScore value={person.confidence} />
-        <ChevronDown className={cn("size-4 text-muted-foreground transition-transform", open && "rotate-180")} />
-      </button>
-      <AnimatePresence initial={false}>
-        {open && (
-          <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.2 }} className="overflow-hidden">
-            <div className="border-t bg-surface px-4 py-3">
-              <div className="label-caps mb-2">Why was this person selected?</div>
-              <ul className="grid gap-1.5 sm:grid-cols-2">
-                {Object.entries(person.checks).map(([k, v]) => (
-                  <li key={k} className="flex items-center gap-2 text-sm">
-                    {v ? <Check className="size-4 text-success" /> : <X className="size-4 text-danger" />}
-                    <span className={v ? "" : "text-muted-foreground"}>{k}</span>
-                  </li>
-                ))}
-              </ul>
-              <p className="mt-2 font-mono text-xs text-muted-foreground sm:hidden">{person.email}</p>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-3 min-w-0 flex-1">
+          <span
+            className={cn(
+              "flex size-7 shrink-0 items-center justify-center rounded-full text-xs font-semibold",
+              isHandwritten
+                ? "bg-amber-100 text-amber-700 dark:bg-amber-950/50 dark:text-amber-300"
+                : "bg-brand-soft text-brand"
+            )}
+          >
+            {isHandwritten ? <PenTool className="size-3.5" /> : <FileText className="size-3.5" />}
+          </span>
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2">
+              <span className="truncate text-sm font-semibold text-foreground">
+                {recipient.text || recipient.raw_text}
+              </span>
+              <span
+                className={cn(
+                  "rounded px-1.5 py-0.5 text-[10px] font-medium border uppercase tracking-wide",
+                  isHandwritten
+                    ? "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/40 dark:text-amber-300"
+                    : "bg-surface text-muted-foreground border-border"
+                )}
+              >
+                {recipient.type}
+              </span>
             </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+            {recipient.raw_text && recipient.raw_text !== recipient.text && (
+              <div className="truncate text-xs text-muted-foreground mt-0.5">
+                Raw Extracted: <span className="font-mono text-foreground font-normal">"{recipient.raw_text}"</span>
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="flex items-center gap-3">
+          {recipient.source_page && (
+            <span className="rounded border bg-surface px-2 py-0.5 font-mono text-xs text-muted-foreground">
+              Page {recipient.source_page}
+            </span>
+          )}
+          {confidenceVal !== null && <ConfidenceScore value={confidenceVal} />}
+        </div>
+      </div>
     </motion.li>
   );
 }
@@ -51,7 +69,9 @@ function Step({ n, title, children }) {
   return (
     <div className="card-surface p-5">
       <div className="mb-3 flex items-center gap-2">
-        <span className="flex size-5 items-center justify-center rounded bg-primary font-mono text-[10px] font-semibold text-primary-foreground">{n}</span>
+        <span className="flex size-5 items-center justify-center rounded bg-primary font-mono text-[10px] font-semibold text-primary-foreground">
+          {n}
+        </span>
         <span className="label-caps">{title}</span>
       </div>
       {children}
@@ -59,39 +79,65 @@ function Step({ n, title, children }) {
   );
 }
 
-const Arrow = () => <div className="flex justify-center py-1.5 text-muted-foreground"><ArrowDown className="size-4" /></div>;
+export default function RecipientResolution({ circular, data }) {
+  // Support both circular prop and legacy data prop
+  const source = circular || data || {};
+  const recipientsList = source.recipients || [];
+  const copyToFound = source.copy_to_found;
+  const copyToPages = source.copy_to_pages || [];
+  const handwrittenText = source.handwritten_text || [];
 
-export default function RecipientResolution({ data }) {
-  const avg = data.recipients.length ? data.recipients.reduce((a, r) => a + r.confidence, 0) / data.recipients.length : 0;
   return (
-    <div>
-      <Step n="1" title="Extracted recipient">
-        <div className="flex items-start gap-3">
-          <Quote className="mt-0.5 size-4 shrink-0 text-brand" />
-          <p className="text-lg font-medium tracking-tight">“{data.phrase}”</p>
-        </div>
-      </Step>
-      <Arrow />
-      <Step n="2" title="System interpretation">
-        <dl className="grid gap-4 sm:grid-cols-2">
-          <div>
-            <dt className="text-xs text-muted-foreground">Role</dt>
-            <dd className="mt-1 flex flex-wrap gap-1.5">{data.interpretation.roles.map((r) => <span key={r} className="rounded-md bg-brand-soft px-2 py-0.5 text-sm font-medium text-brand">{r}</span>)}</dd>
+    <div className="space-y-4">
+      <Step n="1" title={`Extracted Recipients from Copy-To Section (${recipientsList.length})`}>
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3 text-xs text-muted-foreground">
+          <div className="flex items-center gap-2">
+            {copyToFound ? (
+              <span className="inline-flex items-center gap-1.5 font-medium text-success">
+                <Check className="size-4" strokeWidth={2.5} />
+                Copy-To Header Detected {copyToPages.length > 0 && `(Page ${copyToPages.join(", ")})`}
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1.5 font-medium text-warning">
+                <AlertCircle className="size-4" />
+                No Copy-To header detected
+              </span>
+            )}
           </div>
-          <div>
-            <dt className="text-xs text-muted-foreground">Department</dt>
-            <dd className="mt-1 flex flex-wrap gap-1.5">{data.interpretation.departments.map((d) => <span key={d} className="rounded-md bg-surface px-2 py-0.5 text-sm font-medium border">{deptName(d)}</span>)}</dd>
-          </div>
-        </dl>
-      </Step>
-      <Arrow />
-      <Step n="3" title={`Resolved recipients · ${data.recipients.length}`}>
-        <div className="mb-3 flex items-center gap-2 text-xs text-muted-foreground">
-          <BadgeCheck className="size-4 text-success" /> Average match confidence <ConfidenceScore value={Number(avg.toFixed(1))} />
+          <span className="font-mono">{recipientsList.length} recipient phrase(s) extracted</span>
         </div>
-        <ul className="space-y-2">
-          {data.recipients.map((p, i) => <RecipientCard key={p.id} person={p} index={i} />)}
-        </ul>
+
+        {recipientsList.length > 0 ? (
+          <ul className="space-y-2.5">
+            {recipientsList.map((r, i) => (
+              <RecipientCard key={i} recipient={r} index={i} />
+            ))}
+          </ul>
+        ) : (
+          <div className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
+            {copyToFound
+              ? "Copy-To section was located, but no individual recipient entries were extracted."
+              : "No Copy-To distribution section was detected in this circular."}
+          </div>
+        )}
+
+        {handwrittenText.length > 0 && (
+          <div className="mt-4 border-t pt-4">
+            <div className="label-caps mb-2 text-xs">Handwritten Additions (TrOCR)</div>
+            <div className="flex flex-wrap gap-2">
+              {handwrittenText.map((hw, i) => (
+                <span
+                  key={i}
+                  className="inline-flex items-center gap-1.5 rounded-md border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200"
+                >
+                  <PenTool className="size-3" />
+                  <span className="font-medium">{hw.text}</span>
+                  {hw.source_page && <span className="opacity-75 font-mono text-[10px]">(P.{hw.source_page})</span>}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
       </Step>
     </div>
   );

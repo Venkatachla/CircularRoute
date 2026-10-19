@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Link, useRouterState } from "@tanstack/react-router";
 import { motion, AnimatePresence } from "motion/react";
 import {
-  LayoutDashboard, FileText, UploadCloud, Users, ShieldCheck, Send, ScrollText, BookUser, Settings,
+  LayoutDashboard, FileText, UploadCloud, Users, ShieldCheck, Send, ScrollText, Settings,
   PanelLeftClose, PanelLeftOpen, Search, Menu, X, LogOut,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -21,7 +21,6 @@ const NAV = [
   { to: "/audit", label: "Audit Logs", icon: ScrollText },
 ];
 const SYSTEM = [
-  { to: "/directory", label: "Institutional Directory", icon: BookUser },
   { to: "/settings", label: "Settings", icon: Settings },
 ];
 

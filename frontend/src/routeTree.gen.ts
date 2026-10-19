@@ -14,7 +14,6 @@ import { Route as LoginRouteImport } from './routes/login'
 import { Route as ShellIndexRouteImport } from './routes/_shell.index'
 import { Route as ShellApprovalsRouteImport } from './routes/_shell.approvals'
 import { Route as ShellAuditRouteImport } from './routes/_shell.audit'
-import { Route as ShellDirectoryRouteImport } from './routes/_shell.directory'
 import { Route as ShellDistributionRouteImport } from './routes/_shell.distribution'
 import { Route as ShellRecipientsRouteImport } from './routes/_shell.recipients'
 import { Route as ShellSettingsRouteImport } from './routes/_shell.settings'
@@ -44,11 +43,6 @@ const ShellApprovalsRoute = ShellApprovalsRouteImport.update({
 const ShellAuditRoute = ShellAuditRouteImport.update({
   id: '/audit',
   path: '/audit',
-  getParentRoute: () => ShellRoute,
-} as any)
-const ShellDirectoryRoute = ShellDirectoryRouteImport.update({
-  id: '/directory',
-  path: '/directory',
   getParentRoute: () => ShellRoute,
 } as any)
 const ShellDistributionRoute = ShellDistributionRouteImport.update({
@@ -87,7 +81,6 @@ export interface FileRoutesByFullPath {
   '/login': typeof LoginRoute
   '/approvals': typeof ShellApprovalsRoute
   '/audit': typeof ShellAuditRoute
-  '/directory': typeof ShellDirectoryRoute
   '/distribution': typeof ShellDistributionRoute
   '/recipients': typeof ShellRecipientsRoute
   '/settings': typeof ShellSettingsRoute
@@ -99,7 +92,6 @@ export interface FileRoutesByTo {
   '/login': typeof LoginRoute
   '/approvals': typeof ShellApprovalsRoute
   '/audit': typeof ShellAuditRoute
-  '/directory': typeof ShellDirectoryRoute
   '/distribution': typeof ShellDistributionRoute
   '/recipients': typeof ShellRecipientsRoute
   '/settings': typeof ShellSettingsRoute
@@ -114,7 +106,6 @@ export interface FileRoutesById {
   '/login': typeof LoginRoute
   '/_shell/approvals': typeof ShellApprovalsRoute
   '/_shell/audit': typeof ShellAuditRoute
-  '/_shell/directory': typeof ShellDirectoryRoute
   '/_shell/distribution': typeof ShellDistributionRoute
   '/_shell/recipients': typeof ShellRecipientsRoute
   '/_shell/settings': typeof ShellSettingsRoute
@@ -130,7 +121,6 @@ export interface FileRouteTypes {
     | '/login'
     | '/approvals'
     | '/audit'
-    | '/directory'
     | '/distribution'
     | '/recipients'
     | '/settings'
@@ -142,7 +132,6 @@ export interface FileRouteTypes {
     | '/login'
     | '/approvals'
     | '/audit'
-    | '/directory'
     | '/distribution'
     | '/recipients'
     | '/settings'
@@ -156,7 +145,6 @@ export interface FileRouteTypes {
     | '/login'
     | '/_shell/approvals'
     | '/_shell/audit'
-    | '/_shell/directory'
     | '/_shell/distribution'
     | '/_shell/recipients'
     | '/_shell/settings'
@@ -208,13 +196,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ShellAuditRouteImport
       parentRoute: typeof ShellRoute
     }
-    '/_shell/directory': {
-      id: '/_shell/directory'
-      path: '/directory'
-      fullPath: '/directory'
-      preLoaderRoute: typeof ShellDirectoryRouteImport
-      parentRoute: typeof ShellRoute
-    }
     '/_shell/distribution': {
       id: '/_shell/distribution'
       path: '/distribution'
@@ -263,7 +244,6 @@ declare module '@tanstack/react-router' {
 interface ShellRouteChildren {
   ShellApprovalsRoute: typeof ShellApprovalsRoute
   ShellAuditRoute: typeof ShellAuditRoute
-  ShellDirectoryRoute: typeof ShellDirectoryRoute
   ShellDistributionRoute: typeof ShellDistributionRoute
   ShellRecipientsRoute: typeof ShellRecipientsRoute
   ShellSettingsRoute: typeof ShellSettingsRoute
@@ -276,7 +256,6 @@ interface ShellRouteChildren {
 const ShellRouteChildren: ShellRouteChildren = {
   ShellApprovalsRoute: ShellApprovalsRoute,
   ShellAuditRoute: ShellAuditRoute,
-  ShellDirectoryRoute: ShellDirectoryRoute,
   ShellDistributionRoute: ShellDistributionRoute,
   ShellRecipientsRoute: ShellRecipientsRoute,
   ShellSettingsRoute: ShellSettingsRoute,

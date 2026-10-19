@@ -1,14 +1,26 @@
 export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000/api";
 
-export function backendNotConfigured() {
-  throw new Error("This action will be available after backend integration.");
-}
-
 export async function request(path, options = {}) {
+  const isFormData = options.body instanceof FormData;
+  const defaultHeaders = isFormData ? {} : { "Content-Type": "application/json" };
+
   const res = await fetch(`${API_BASE_URL}${path}`, {
-    headers: { "Content-Type": "application/json", ...(options.headers || {}) },
     ...options,
+    headers: {
+      ...defaultHeaders,
+      ...(options.headers || {}),
+    },
   });
-  if (!res.ok) throw new Error(`Request failed: ${res.status}`);
+
+  if (!res.ok) {
+    let errMessage = `Request failed with status ${res.status}`;
+    try {
+      const errData = await res.json();
+      if (errData.message) errMessage = errData.message;
+      else if (errData.detail) errMessage = typeof errData.detail === 'string' ? errData.detail : JSON.stringify(errData.detail);
+    } catch (_) {}
+    throw new Error(errMessage);
+  }
+
   return res.json();
 }
