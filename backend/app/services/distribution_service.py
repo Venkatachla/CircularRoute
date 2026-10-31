@@ -67,14 +67,18 @@ class DistributionService:
 
         sent_count = 0
         failed_count = 0
+        disabled_count = 0
 
         for r in dispatch_results:
             row_id = f"DIST-{uuid.uuid4().hex[:6].upper()}"
-            status_state = "delivered" if r["status"] == "sent" else "failed"
-
             if r["status"] == "sent":
+                status_state = "delivered"
                 sent_count += 1
+            elif r["status"] == "disabled":
+                status_state = "disabled"
+                disabled_count += 1
             else:
+                status_state = "failed"
                 failed_count += 1
 
             new_rows.insert(0, DistributionRow(
@@ -89,11 +93,14 @@ class DistributionService:
             ))
 
         # Add event to timeline
-        summary_msg = f"Dispatched circular {document_id} to {sent_count} recipient(s)."
-        if failed_count > 0:
-            summary_msg += f" ({failed_count} failed)"
+        if disabled_count > 0:
+            summary_msg = f"Distribution skipped for circular {document_id}: Email sending disabled (EMAIL_ENABLED=false)."
+            kind = "info"
+        elif failed_count > 0:
+            summary_msg = f"Dispatched circular {document_id} to {sent_count} recipient(s). ({failed_count} failed)"
             kind = "warning"
         else:
+            summary_msg = f"Dispatched circular {document_id} to {sent_count} recipient(s)."
             kind = "success"
 
         new_timeline.insert(0, TimelineEvent(
@@ -114,13 +121,7 @@ class DistributionService:
         with open(DISTRIBUTION_FILE, "w", encoding="utf-8") as f:
             json.dump(data_to_save, f, indent=2)
 
-        return DistributionResponse(
-            status="success",
-            total_distributed=len(new_rows),
-            timeline=new_timeline,
-            rows=new_rows
-        )
+        return self.get_distribution()
 
 
-# Global instance
 distribution_service = DistributionService()

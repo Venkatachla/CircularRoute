@@ -35,8 +35,17 @@ export function formatCircularData(data) {
   const copyToFound = Boolean(data.copy_to_found);
   const copyToPages = Array.isArray(data.copy_to_pages) ? data.copy_to_pages : [];
 
+  const rawOcrText = data.raw_ocr_text ?? (handwritten[0] ? (handwritten[0].raw_ocr_text || handwritten[0].text) : null);
+  const correctedText = data.corrected_text ?? (handwritten[0] ? handwritten[0].corrected_text : null);
+  const cropImage = data.handwritten_crop_image ?? (handwritten[0] ? handwritten[0].crop_image : null);
+  const interpretedRecipients = Array.isArray(data.interpreted_recipients)
+    ? data.interpreted_recipients
+    : (handwritten[0] && Array.isArray(handwritten[0].interpreted_recipients) ? handwritten[0].interpreted_recipients : []);
+
+  const hasUnresolved = interpretedRecipients.some((r) => r.status === "UNRESOLVED");
+
   const recipientCount = recipients.length;
-  const overallConfidence = recipientCount > 0 ? 94 : 70;
+  const overallConfidence = hasUnresolved ? 72 : (recipientCount > 0 ? 94 : 70);
 
   return {
     id: docId,
@@ -44,17 +53,26 @@ export function formatCircularData(data) {
     title: filename,
     filename: filename,
     file_type: fileType,
-    status: data.status === "success" || data.status === "processed" ? "processed" : "pending",
+    status: data.status === "success" || data.status === "processed" ? (hasUnresolved ? "Pending Approval" : "processed") : "pending",
     copy_to_found: copyToFound,
     copy_to_pages: copyToPages,
     recipients: recipients,
     handwritten_text: handwritten,
+    raw_ocr_text: rawOcrText,
+    corrected_text: correctedText,
+    handwritten_crop_image: cropImage,
+    interpreted_recipients: interpretedRecipients,
+    has_unresolved_recipients: hasUnresolved,
+    canApprove: !hasUnresolved,
+    reviewReason: hasUnresolved
+      ? "Unresolved handwritten Copy-To recipients require manual review."
+      : "Low OCR confidence threshold.",
     confidence: overallConfidence,
     fieldConfidence: {
       "Subject / Header": 95,
       "Copy-To Header": copyToFound ? 98 : 40,
       "Recipient Extraction": recipientCount > 0 ? 92 : 50,
-      "Handwriting OCR": handwritten.length > 0 ? 88 : 100,
+      "Handwriting OCR": handwritten.length > 0 ? (hasUnresolved ? 75 : 92) : 100,
     },
     authority: data.authority || "Issuing Authority / Registrar",
     date: data.date || new Date().toISOString(),
@@ -100,6 +118,24 @@ export async function getCircular(id) {
   // 3. Cache into sessionStorage so navigation during this session is instant
   saveCircularToSession(id, formatted);
   return formatted;
+}
+
+export async function correctHandwriting(documentId, payload) {
+  const res = await request(`/circular/${documentId}/handwriting/correct`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(payload),
+  });
+
+  if (res) {
+    const rawData = res.data || res;
+    const formatted = formatCircularData(rawData);
+    updateCircularInSession(documentId, formatted);
+    return formatted;
+  }
+  return res;
 }
 
 export async function listCirculars() {

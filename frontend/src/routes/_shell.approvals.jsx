@@ -27,22 +27,43 @@ function Approvals() {
   const [items, setItems] = useState(initial);
   const [busy, setBusy] = useState(null);
   const navigate = useNavigate();
+
   const decide = async (c, d) => {
+    if (d === "approve" && (c.has_unresolved_recipients || c.canApprove === false)) {
+      toast.error(`Approval blocked for ${c.ref}: Unresolved handwritten recipients remain. Please resolve or correct instructions first.`);
+      return;
+    }
     setBusy(c.id);
     await decideCircular(c.id, d);
     setItems((x) => x.filter((i) => i.id !== c.id));
     setBusy(null);
     d === "approve" ? toast.success(`${c.ref} approved and distributed`) : toast(`${c.ref} returned to draft`);
   };
+
   return (
     <>
-      <PageHeader eyebrow="Human in the loop" title="Approval center" subtitle="Circulars below the 90% confidence threshold." />
-      {items.length === 0 ? <EmptyState icon={ShieldCheck} title="No circulars to review" body="Approval records will appear here after backend integration." /> : (
+      <PageHeader
+        eyebrow="Human in the loop"
+        title="Approval center"
+        subtitle="Circulars below confidence threshold or with unresolved recipients requiring manual verification."
+      />
+      {items.length === 0 ? (
+        <EmptyState
+          icon={ShieldCheck}
+          title="No circulars pending review"
+          body="All processed circulars have resolved recipients and high confidence."
+        />
+      ) : (
         <div className="grid gap-4 md:grid-cols-2">
           {items.map((c) => (
-            <ApprovalCard key={c.id} circular={c} busy={busy === c.id}
+            <ApprovalCard
+              key={c.id}
+              circular={c}
+              busy={busy === c.id}
               onReview={() => navigate({ to: "/circulars/$id", params: { id: c.id } })}
-              onApprove={() => decide(c, "approve")} onReject={() => decide(c, "reject")} />
+              onApprove={() => decide(c, "approve")}
+              onReject={() => decide(c, "reject")}
+            />
           ))}
         </div>
       )}

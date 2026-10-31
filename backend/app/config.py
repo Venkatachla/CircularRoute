@@ -47,3 +47,6 @@ def resolve_storage_path(env_var_name: str, default_folder_name: str) -> Path:
 UPLOAD_DIR = resolve_storage_path("UPLOAD_DIR", "uploads")
 OUTPUT_DIR = resolve_storage_path("OUTPUT_DIR", "outputs")
 DIAGNOSTICS_DIR = resolve_storage_path("DIAGNOSTICS_DIR", "diagnostics")
+
+# Email sending configuration (defaults to false for safety)
+EMAIL_ENABLED = os.getenv("EMAIL_ENABLED", "false").lower() in ("true", "1", "yes")

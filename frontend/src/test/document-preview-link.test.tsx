@@ -1,8 +1,34 @@
-import { render, screen } from "@testing-library/react";
+import { renderToString } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import DocumentPreview from "@/components/DocumentPreview";
 import { formatCircularData } from "@/services/circularService";
 import { saveCircularToSession, getCircularFromSession } from "@/services/sessionService";
+
+function render(ui: React.ReactElement) {
+  const container = document.createElement("div");
+  container.innerHTML = renderToString(ui);
+  document.body.appendChild(container);
+  return {
+    container,
+    getByText: (text: string) => {
+      const el = Array.from(container.querySelectorAll("*")).find((node) => node.textContent?.includes(text));
+      if (!el) throw new Error(`Text "${text}" not found`);
+      return el;
+    },
+    getByRole: (role: string, options?: { name?: RegExp }) => {
+      if (role === "link") {
+        const links = Array.from(container.querySelectorAll("a"));
+        if (options?.name) {
+          const matched = links.find((l) => options.name!.test(l.getAttribute("aria-label") || l.textContent || ""));
+          if (!matched) throw new Error(`Link with name "${options.name}" not found`);
+          return matched;
+        }
+        if (links.length > 0) return links[0];
+      }
+      throw new Error(`Role "${role}" not found`);
+    },
+  };
+}
 
 describe("DocumentPreview Link Component", () => {
   it("renders a compact clickable link instead of an embedded preview or iframe", () => {
@@ -12,7 +38,8 @@ describe("DocumentPreview Link Component", () => {
       documentUrl: "http://localhost:8000/api/v1/circular/CIR-20261019-8652E8/file",
     };
 
-    const { container } = render(<DocumentPreview circular={mockCircular} />);
+    const screen = render(<DocumentPreview circular={mockCircular} />);
+    const container = screen.container;
 
     // Must NOT contain an iframe or embedded document element
     expect(container.querySelector("iframe")).toBeNull();
@@ -20,16 +47,16 @@ describe("DocumentPreview Link Component", () => {
     expect(container.querySelector("object")).toBeNull();
 
     // Must display original filename
-    expect(screen.getByText("Original circular:")).toBeInTheDocument();
-    expect(screen.getByText("circular2.jpeg")).toBeInTheDocument();
+    expect(screen.getByText("Original circular:")).toBeDefined();
+    expect(screen.getByText("circular2.jpeg")).toBeDefined();
 
     // Must render clickable link targeting actual backend document URL
     const link = screen.getByRole("link", { name: /open original circular circular2\.jpeg in new tab/i });
-    expect(link).toBeInTheDocument();
-    expect(link).toHaveAttribute("href", "http://localhost:8000/api/v1/circular/CIR-20261019-8652E8/file");
-    expect(link).toHaveAttribute("target", "_blank");
-    expect(link).toHaveAttribute("rel", "noopener noreferrer");
-    expect(link).toHaveTextContent("View circular");
+    expect(link).toBeDefined();
+    expect(link.getAttribute("href")).toBe("http://localhost:8000/api/v1/circular/CIR-20261019-8652E8/file");
+    expect(link.getAttribute("target")).toBe("_blank");
+    expect(link.getAttribute("rel")).toBe("noopener noreferrer");
+    expect(link.textContent).toContain("View circular");
   });
 
   it("renders a clear unavailable state when document URL is missing", () => {
@@ -39,11 +66,12 @@ describe("DocumentPreview Link Component", () => {
       documentUrl: null,
     };
 
-    const { container } = render(<DocumentPreview circular={mockCircular} />);
+    const screen = render(<DocumentPreview circular={mockCircular} />);
+    const container = screen.container;
 
     expect(container.querySelector("iframe")).toBeNull();
     expect(container.querySelector("a")).toBeNull();
-    expect(screen.getByText("Original circular document unavailable")).toBeInTheDocument();
+    expect(screen.getByText("Original circular document unavailable")).toBeDefined();
   });
 
   it("preserves documentUrl and extracted recipients across session persistence", () => {

@@ -89,6 +89,16 @@ class DocumentService:
             pages_lines, page_images
         )
 
+        # Extract top-level handwritten resolution metadata
+        crop_image_url = None
+        raw_hw_ocr = None
+        interpreted_recips = []
+        if handwritten_text:
+            first_hw = handwritten_text[0]
+            crop_image_url = getattr(first_hw, "crop_image", None)
+            raw_hw_ocr = getattr(first_hw, "raw_ocr_text", None) or first_hw.text
+            interpreted_recips = getattr(first_hw, "interpreted_recipients", []) or []
+
         ocr_result = OCRResult(
             document_id=doc_id,
             filename=filename,
@@ -97,7 +107,11 @@ class DocumentService:
             copy_to_found=copy_to_found,
             copy_to_pages=copy_to_pages,
             recipients=recipients,
-            handwritten_text=handwritten_text
+            handwritten_text=handwritten_text,
+            handwritten_crop_image=crop_image_url,
+            raw_ocr_text=raw_hw_ocr,
+            corrected_text=None,
+            interpreted_recipients=interpreted_recips
         )
 
         # 4. Save output JSON physical file to outputs/<document_id>.json

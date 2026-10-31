@@ -1,4 +1,4 @@
-from typing import Literal, Optional, List
+from typing import Literal, Optional, List, Dict, Any
 from pydantic import BaseModel, Field
 
 
@@ -10,11 +10,31 @@ class Recipient(BaseModel):
     source_page: int = Field(..., description="1-indexed page number where recipient was found")
 
 
+class HandwrittenInstruction(BaseModel):
+    instruction: str = Field(..., description="Individual extracted or separated instruction token")
+    raw_text: Optional[str] = Field(None, description="Exact original raw instruction text")
+    corrected_text: Optional[str] = Field(None, description="Administrator corrected instruction text")
+    interpretation: str = Field(..., description="Semantic meaning resolved by application")
+    status: Literal["RESOLVED", "UNRESOLVED", "INFORMATIONAL", "MANUALLY CORRECTED"] = Field(
+        ..., description="Resolution status"
+    )
+    result: str = Field(..., description="Formatted resolution result or human-readable summary")
+    emails: List[str] = Field(default_factory=list, description="Resolved email address list from directory")
+    matched_faculty: Optional[Dict[str, Any]] = Field(None, description="Matched faculty details (id, name, email)")
+    unresolved_reason: Optional[str] = Field(None, description="Reason if instruction remains unresolved")
+
+
 class HandwrittenText(BaseModel):
     text: str = Field(..., description="Recognized handwritten text string")
     confidence: Optional[float] = Field(None, description="Handwriting recognition confidence")
     associated_with: str = Field("copy_to", description="Target section association")
     source_page: int = Field(..., description="1-indexed page number of handwritten addition")
+    raw_ocr_text: Optional[str] = Field(None, description="Exact text returned by handwriting recognition")
+    corrected_text: Optional[str] = Field(None, description="Optional administrator correction")
+    crop_image: Optional[str] = Field(None, description="Cropped handwritten image data URL")
+    interpreted_recipients: List[HandwrittenInstruction] = Field(
+        default_factory=list, description="Semantic meaning resolved by application"
+    )
 
 
 class OCRResult(BaseModel):
@@ -26,6 +46,12 @@ class OCRResult(BaseModel):
     copy_to_pages: List[int] = Field(default_factory=list, description="Pages where Copy to sections reside")
     recipients: List[Recipient] = Field(default_factory=list, description="Extracted recipients list")
     handwritten_text: List[HandwrittenText] = Field(default_factory=list, description="Handwritten text blocks")
+    handwritten_crop_image: Optional[str] = Field(None, description="Original cropped handwritten image from PDF/image")
+    raw_ocr_text: Optional[str] = Field(None, description="Exact text returned by handwriting recognition")
+    corrected_text: Optional[str] = Field(None, description="Optional administrator correction")
+    interpreted_recipients: List[HandwrittenInstruction] = Field(
+        default_factory=list, description="Semantic meaning resolved by application"
+    )
 
 
 class ProcessResponse(BaseModel):

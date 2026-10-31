@@ -463,12 +463,13 @@ class OCRService:
                     y1_crop = y0_crop + 115
 
                 page_img = img_map.get(page_num)
+                crop_b64 = None
                 if page_img:
                     w, h = page_img.size
-                    x0_crop = max(0, int(sub_box[0] - 25))
-                    x1_crop = min(w, int(sub_box[2] + 25))
-                    y0_crop = max(0, int(y0_crop))
-                    y1_crop = min(h, int(y1_crop))
+                    x0_crop = max(0, min(w - 1, int(sub_box[0] - 25)))
+                    x1_crop = max(x0_crop + 1, min(w, int(sub_box[2] + 25)))
+                    y0_crop = max(0, min(h - 1, int(y0_crop)))
+                    y1_crop = max(y0_crop + 1, min(h, int(y1_crop)))
                     crop_box = [x0_crop, y0_crop, x1_crop, y1_crop]
                 else:
                     crop_box = sub_box
@@ -477,7 +478,7 @@ class OCRService:
                 hw_conf = primary_item.get("confidence", None)
 
                 # Attempt TrOCR recognition if page image is available
-                if page_img:
+                if page_img and crop_box[2] > crop_box[0] and crop_box[3] > crop_box[1]:
                     try:
                         trocr_crop = page_img.crop((crop_box[0], crop_box[1], crop_box[2], crop_box[3]))
 
@@ -487,6 +488,15 @@ class OCRService:
                         diag_crop_path.parent.mkdir(parents=True, exist_ok=True)
                         trocr_crop.save(diag_crop_path)
                         logger.info(f"[OCR] Saved actual TrOCR diagnostic crop to: {diag_crop_path.resolve()}")
+
+                        # Base64 data URL
+                        try:
+                            import io, base64
+                            buf = io.BytesIO()
+                            trocr_crop.save(buf, format="PNG")
+                            crop_b64 = f"data:image/png;base64,{base64.b64encode(buf.getvalue()).decode('utf-8')}"
+                        except Exception:
+                            crop_b64 = None
 
                         # Run real TrOCR inference
                         trocr_text, trocr_conf = handwriting_service.predict_handwriting(trocr_crop)
@@ -522,11 +532,18 @@ class OCRService:
 
                 if norm_hw and len(norm_hw) > 1 and norm_hw.lower() not in already_added_hw_texts:
                     already_added_hw_texts.add(norm_hw.lower())
+                    from app.services.recipient_service import recipient_service
+                    resolved_instructions = recipient_service.resolve_handwritten_section(norm_hw)
+
                     extracted_handwritten.append(HandwrittenText(
                         text=norm_hw,
                         confidence=hw_conf,
                         associated_with="copy_to",
-                        source_page=page_num
+                        source_page=page_num,
+                        raw_ocr_text=hw_resolved_text,
+                        corrected_text=None,
+                        crop_image=crop_b64,
+                        interpreted_recipients=resolved_instructions
                     ))
                     extracted_recipients.append(Recipient(
                         raw_text=sub_txt,

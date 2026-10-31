@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import List, Optional, Dict, Any, Tuple
 
 from app.schemas.distribution_schema import EmailRecipientPayload
-from app.config import UPLOAD_DIR
+from app.config import UPLOAD_DIR, EMAIL_ENABLED
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +25,7 @@ class EmailService:
         self.use_tls = os.getenv("SMTP_USE_TLS", "true").lower() in ("true", "1", "yes")
 
     def is_configured(self) -> bool:
-        return bool(self.smtp_host and self.smtp_user and self.smtp_password)
+        return bool(EMAIL_ENABLED and self.smtp_host and self.smtp_user and self.smtp_password)
 
     async def send_circular_emails(
         self,
@@ -36,8 +36,9 @@ class EmailService:
         attach_document: bool = True
     ) -> List[Dict[str, Any]]:
         """
-        Dispatches emails to target recipients. If SMTP is configured, sends via live SMTP.
-        Otherwise operates in simulated delivery mode and records dispatch audit status.
+        Dispatches emails to target recipients. If SMTP is configured and EMAIL_ENABLED is true,
+        sends via live SMTP.
+        Otherwise marks delivery as disabled/unattempted and records audit status without false claims.
         """
         results = []
         doc_subject = subject or f"Official Circular Notification [{document_id}]"
@@ -66,6 +67,18 @@ class EmailService:
                 })
                 continue
 
+            if not EMAIL_ENABLED:
+                # Do not fake delivery when disabled
+                logger.info(f"[EMAIL SENDING DISABLED] Recipient: {email_addr} | Doc: {document_id}")
+                results.append({
+                    "email": email_addr,
+                    "name": rec_name,
+                    "dept": dept,
+                    "status": "disabled",
+                    "error": "Email sending is disabled (EMAIL_ENABLED=false)"
+                })
+                continue
+
             # Send asynchronously in executor to avoid blocking event loop
             if self.is_configured():
                 success, error_msg = await asyncio.to_thread(
@@ -78,11 +91,9 @@ class EmailService:
                 )
                 status = "sent" if success else "failed"
             else:
-                # Simulated dispatch mode
-                logger.info(f"[SIMULATED MAIL DISPATCH] To: {email_addr} | Subject: {doc_subject} | Doc: {document_id}")
-                success = True
-                status = "sent"
-                error_msg = None
+                success = False
+                status = "failed"
+                error_msg = "SMTP credentials not configured"
 
             results.append({
                 "email": email_addr,
@@ -98,9 +109,9 @@ class EmailService:
         self,
         to_email: str,
         subject: str,
-        message_body: Optional[str],
+        body: Optional[str],
         document_id: str,
-        attachment_path: Optional[Path]
+        attachment_path: Optional[Path] = None
     ) -> Tuple[bool, Optional[str]]:
         try:
             msg = MIMEMultipart()
@@ -108,43 +119,31 @@ class EmailService:
             msg["To"] = to_email
             msg["Subject"] = subject
 
-            html_content = f"""
-            <html>
-                <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
-                    <div style="max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 8px;">
-                        <h2 style="color: #2563eb; margin-top: 0;">Official Institutional Circular</h2>
-                        <p><strong>Document ID:</strong> {document_id}</p>
-                        <hr style="border: 0; border-top: 1px solid #eee;" />
-                        <div style="margin: 20px 0;">
-                            {message_body or "Please find the official circular document details processed via CircularRoute."}
-                        </div>
-                        <p style="font-size: 0.85em; color: #666; margin-top: 30px;">
-                            This is an automated notification from CircularRoute Automatic Document Routing System.
-                        </p>
-                    </div>
-                </body>
-            </html>
-            """
-            msg.attach(MIMEText(html_content, "html"))
+            text_content = body or (
+                f"Dear Recipient,\n\n"
+                f"Please find attached official circular notification referenced as: {document_id}.\n\n"
+                f"CircularRoute Automated Distribution System"
+            )
+            msg.attach(MIMEText(text_content, "plain"))
 
             if attachment_path and attachment_path.exists():
                 with open(attachment_path, "rb") as f:
                     part = MIMEApplication(f.read(), Name=attachment_path.name)
-                part['Content-Disposition'] = f'attachment; filename="{attachment_path.name}"'
+                part["Content-Disposition"] = f'attachment; filename="{attachment_path.name}"'
                 msg.attach(part)
 
             server = smtplib.SMTP(self.smtp_host, self.smtp_port, timeout=10)
             if self.use_tls:
                 server.starttls()
             server.login(self.smtp_user, self.smtp_password)
-            server.sendmail(self.from_email, to_email, msg.as_string())
+            server.sendmail(self.from_email, [to_email], msg.as_string())
             server.quit()
-
+            logger.info(f"Email successfully dispatched to {to_email} for document {document_id}")
             return True, None
         except Exception as e:
-            logger.error(f"Failed to send email to {to_email}: {e}")
-            return False, str(e)
+            err_msg = str(e)
+            logger.error(f"Failed dispatching email to {to_email}: {err_msg}")
+            return False, err_msg
 
 
-# Global instance
 email_service = EmailService()

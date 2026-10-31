@@ -1,4 +1,5 @@
 import { createFileRoute, Link, notFound } from "@tanstack/react-router";
+import { useState } from "react";
 import { ArrowLeft } from "lucide-react";
 import PageHeader from "@/components/PageHeader";
 import StatusBadge from "@/components/StatusBadge";
@@ -40,16 +41,27 @@ export const Route = createFileRoute("/_shell/circulars/$id")({
 
 function Detail() {
   const { circular } = Route.useLoaderData();
+  const [currentCircular, setCurrentCircular] = useState(circular);
+
   return (
     <>
       <Link to="/circulars" className="mb-3 inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
         <ArrowLeft className="size-4" />Circulars
       </Link>
-      <PageHeader eyebrow={circular.ref} title={circular.title} actions={<StatusBadge status={circular.status} />} />
-      <div className="mb-6"><DecisionFlow confidence={circular.confidence} /></div>
-      <div className="mb-6"><DocumentPreview circular={circular} /></div>
-      <ExtractionPanel circular={circular} />
-      <div className="mt-6"><RecipientResolution circular={circular} /></div>
+      <PageHeader
+        eyebrow={currentCircular.ref}
+        title={currentCircular.title}
+        actions={<StatusBadge status={currentCircular.status} />}
+      />
+      <div className="mb-6"><DecisionFlow confidence={currentCircular.confidence} /></div>
+      <div className="mb-6"><DocumentPreview circular={currentCircular} /></div>
+      <ExtractionPanel circular={currentCircular} />
+      <div className="mt-6">
+        <RecipientResolution
+          circular={currentCircular}
+          onUpdate={(updated) => setCurrentCircular(updated)}
+        />
+      </div>
     </>
   );
 }
