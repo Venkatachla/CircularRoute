@@ -385,10 +385,18 @@ class RecipientService:
         resolved_list: List[ResolvedRecipient] = []
 
         for rec in recipients:
-            raw_text = rec.raw_text if hasattr(rec, "raw_text") else str(rec)
-            norm_text = rec.text if hasattr(rec, "text") else self._normalize_phrase(raw_text)
-            rec_type = rec.type if hasattr(rec, "type") else "printed"
-            page_num = rec.source_page if hasattr(rec, "source_page") else 1
+            # OCR results are loaded from JSON before routing, so recipients
+            # arrive here as dictionaries rather than Pydantic model objects.
+            if isinstance(rec, dict):
+                raw_text = str(rec.get("raw_text") or rec.get("text") or "")
+                norm_text = str(rec.get("text") or self._normalize_phrase(raw_text))
+                rec_type = rec.get("type", "printed")
+                page_num = rec.get("source_page", 1)
+            else:
+                raw_text = rec.raw_text if hasattr(rec, "raw_text") else str(rec)
+                norm_text = rec.text if hasattr(rec, "text") else self._normalize_phrase(raw_text)
+                rec_type = rec.type if hasattr(rec, "type") else "printed"
+                page_num = rec.source_page if hasattr(rec, "source_page") else 1
 
             matched_entry, matched_email, match_status, confidence = self._match_phrase_to_directory(norm_text, directory)
 

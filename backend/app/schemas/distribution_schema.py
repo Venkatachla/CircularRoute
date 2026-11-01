@@ -9,10 +9,14 @@ class EmailRecipientPayload(BaseModel):
 
 
 class SendMailRequest(BaseModel):
-    recipients: List[EmailRecipientPayload] = Field(..., description="List of target recipient emails")
+    recipient_names: List[str] = Field(default_factory=list, description="Extracted or manually edited recipient names; email addresses are resolved server-side")
     subject: Optional[str] = Field(None, description="Custom email subject line")
     message_body: Optional[str] = Field(None, description="Additional notes or message body")
     attach_document: bool = Field(True, description="Whether to attach original circular document")
+
+
+class ResolveRecipientsRequest(BaseModel):
+    recipient_names: List[str] = Field(default_factory=list, description="Optional edited recipient names")
 
 
 class DistributionRow(BaseModel):

@@ -1,6 +1,6 @@
-import os
 import json
 import logging
+import re
 from pathlib import Path
 from typing import Optional, List
 from fastapi import APIRouter, UploadFile, File, status
@@ -11,6 +11,10 @@ from app.schemas.ocr_schema import ProcessResponse
 from app.services.document_service import document_service, is_allowed_file
 from app.services.json_service import load_output_json
 from app.services.recipient_service import recipient_service
+from app.services.recipient_mapping_service import recipient_mapping_service
+from app.services.email_service import email_service
+from app.services.distribution_service import distribution_service
+from app.schemas.distribution_schema import SendMailRequest, ResolveRecipientsRequest, EmailRecipientPayload
 from app.config import UPLOAD_DIR, OUTPUT_DIR, DIAGNOSTICS_DIR
 
 logger = logging.getLogger(__name__)
@@ -22,6 +26,33 @@ class HandwritingCorrectionRequest(BaseModel):
     corrected_text: Optional[str] = Field(None, description="Complete corrected handwritten text line")
     instruction_index: Optional[int] = Field(None, description="Index of specific separated instruction to correct")
     corrected_instruction: Optional[str] = Field(None, description="Replacement text for specific instruction")
+
+
+def _resolve_circular_recipients(data, recipient_names=None):
+    extracted = data.get("recipients") or []
+    source_names = [
+        str((recipient.get("text") or recipient.get("raw_text") or "")).strip()
+        if isinstance(recipient, dict) else str(getattr(recipient, "text", "") or getattr(recipient, "raw_text", "")).strip()
+        for recipient in extracted
+    ]
+    names = recipient_names if recipient_names is not None else source_names
+    targets = []
+    unresolved = []
+    rows = []
+    seen = set()
+
+    for index, extracted_name in enumerate(source_names):
+        name = str(names[index]).strip() if index < len(names) else ""
+        email = recipient_mapping_service.find_email(name) if name else None
+        rows.append({"extracted_name": extracted_name, "recipient_name": name, "status": "matched" if email else "unmatched"})
+        if not email:
+            unresolved.append(name or extracted_name or "Recipient name is empty")
+        elif email.casefold() not in seen:
+            seen.add(email.casefold())
+            targets.append(EmailRecipientPayload(name=name, email=email, department="General"))
+    for name in names[len(source_names):]:
+        unresolved.append(str(name).strip() or "Recipient name is empty")
+    return targets, unresolved, rows
 
 
 @router.get("/health", summary="Health check endpoint")
@@ -122,6 +153,45 @@ async def get_circular_data(document_id: str):
                     pass
 
     return data
+
+
+@router.post("/circular/{document_id}/send-mail", summary="Resolve recipients and send a circular through Resend")
+async def send_circular_mail(document_id: str, request: SendMailRequest):
+    data = load_output_json(document_id)
+    if not data:
+        return JSONResponse(status_code=404, content={"status": "error", "message": f"Circular '{document_id}' was not found."})
+
+    targets, unresolved, _ = _resolve_circular_recipients(data, request.recipient_names or None)
+    if unresolved:
+        return JSONResponse(status_code=409, content={"status": "error", "message": "Add email mappings for all recipient names in backend/recipient_email_map.json before sending.", "unresolved": unresolved})
+    if not targets:
+        return JSONResponse(status_code=422, content={"status": "error", "message": "No email recipients were resolved from this circular."})
+
+    results = await email_service.send_circular_emails(
+        document_id, targets, request.subject, request.message_body, request.attach_document
+    )
+    distribution = distribution_service.record_mail_dispatch(document_id, results, request.subject or "")
+    sent = sum(result["status"] == "sent" for result in results)
+    return {"status": "success" if sent == len(results) else "partial" if sent else "failed", "document_id": document_id, "total": len(results), "sent": sent, "results": results, "distribution": distribution.model_dump()}
+
+
+@router.post("/circular/{document_id}/resolve-recipients", summary="Resolve recipient names using the backend JSON map")
+async def resolve_circular_recipients(document_id: str, request: ResolveRecipientsRequest):
+    data = load_output_json(document_id)
+    if not data:
+        return JSONResponse(status_code=404, content={"status": "error", "message": f"Circular '{document_id}' was not found."})
+    targets, unresolved, rows = _resolve_circular_recipients(data, request.recipient_names or None)
+    return {
+        "status": "resolved" if targets and not unresolved else "unresolved",
+        "document_id": document_id,
+        "matches": rows,
+        "unresolved": unresolved,
+    }
+
+
+@router.get("/distribution", summary="Get email distribution history")
+async def get_distribution_history():
+    return distribution_service.get_distribution().model_dump()
 
 
 @router.post("/circular/{document_id}/handwriting/correct", summary="Correct handwritten instructions and re-run resolution")

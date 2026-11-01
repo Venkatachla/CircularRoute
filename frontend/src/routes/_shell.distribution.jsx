@@ -27,7 +27,7 @@ function Distribution() {
   return (
     <>
       <PageHeader eyebrow="Delivery" title="Distribution" subtitle="Distribution records for circulars." />
-      {!d.timeline.length && !d.rows.length ? <EmptyState title="No distribution records" body="Recipient extraction is operational. Downstream email dispatch is managed by the external delivery service." /> : <div className="grid gap-6 lg:grid-cols-3">
+      {!d.timeline.length && !d.rows.length ? <EmptyState title="No distribution records" body="Sent circular emails and recipient delivery attempts will appear here." /> : <div className="grid gap-6 lg:grid-cols-3">
         <div className="card-surface p-5">
           <div className="label-caps mb-4">Timeline</div>
           <ol className="space-y-4">
