@@ -72,7 +72,7 @@ class DistributionService:
         for r in dispatch_results:
             row_id = f"DIST-{uuid.uuid4().hex[:6].upper()}"
             if r["status"] == "sent":
-                status_state = "delivered"
+                status_state = "sent"
                 sent_count += 1
             elif r["status"] == "disabled":
                 status_state = "disabled"

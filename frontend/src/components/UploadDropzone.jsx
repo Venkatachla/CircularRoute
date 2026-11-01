@@ -1,9 +1,9 @@
 import { useRef, useState } from "react";
 import { motion } from "motion/react";
-import { UploadCloud, FileText, FileType2, Image as ImageIcon, FileCheck2 } from "lucide-react";
+import { UploadCloud, FileText, Image as ImageIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-const ACCEPT = ".pdf,.docx,.png,.jpg,.jpeg,.tiff";
+const ACCEPT = ".pdf,.png,.jpg,.jpeg,.webp,image/jpeg,image/png,image/webp,application/pdf";
 
 export default function UploadDropzone({ onFile, disabled }) {
   const input = useRef(null);
@@ -44,14 +44,14 @@ export default function UploadDropzone({ onFile, disabled }) {
       </p>
       <div className="mt-6 flex flex-wrap justify-center gap-2">
         {[
-          { icon: FileText, l: "PDF" }, { icon: FileType2, l: "DOCX" }, { icon: ImageIcon, l: "Images" }, { icon: FileCheck2, l: "Digital documents" },
+          { icon: FileText, l: "PDF" }, { icon: ImageIcon, l: "JPG, PNG, WEBP" },
         ].map(({ icon: I, l }) => (
           <span key={l} className="inline-flex items-center gap-1.5 rounded-md border bg-card px-2.5 py-1 text-xs text-muted-foreground">
             <I className="size-3.5" /> {l}
           </span>
         ))}
       </div>
-      <p className="mt-4 text-xs text-muted-foreground">Maximum 25 MB · Encrypted in transit</p>
+      <p className="mt-4 text-xs text-muted-foreground">PDF and image files</p>
     </motion.div>
   );
 }
