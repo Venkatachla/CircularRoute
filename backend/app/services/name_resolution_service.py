@@ -137,9 +137,9 @@ class NameResolutionService:
                 normalized_override = normalize_name(override)
                 if normalized_override in {"file"}:
                     if item.get("source_type") == "handwritten":
-                        status, selected_name, resolution_method = "skipped", "File", "rule"
+                        selected_id, status, selected_name, resolution_method = "file", "skipped", "File", "rule"
                 elif normalized_override in {"student", "students"}:
-                    status, selected_name, resolution_method = "matched", "Students", "rule"
+                    selected_id, status, selected_name, resolution_method = "students", "matched", "Students", "rule"
                 else:
                     selected = next((row for row in DEPARTMENT_DATA if any(normalize_name(value) == normalized_override for value in [row["faculty_name"], *row["aliases"]])), None)
                     if selected:

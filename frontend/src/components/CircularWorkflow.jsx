@@ -107,7 +107,7 @@ export default function CircularWorkflow() {
   const canSend = matches?.status === "resolved" && !namesChanged && !sending && !processing && !resolving && !sent;
 
   return (
-    <main className="mx-auto w-full max-w-3xl space-y-7">
+    <main className="mx-auto w-full max-w-5xl space-y-7">
       <header className="space-y-2">
         <p className="text-xs font-semibold uppercase tracking-[0.16em] text-brand">CircularRoute</p>
         <h1 className="text-3xl font-semibold tracking-tight">Send a circular</h1>
@@ -140,25 +140,57 @@ export default function CircularWorkflow() {
           {matches.status === "resolved" && !namesChanged && <span className="inline-flex items-center gap-1.5 text-sm font-medium text-success"><CheckCircle2 className="size-4" />Mapped</span>}
         </div>
 
-        {recipientNames.length > 0 ? <div className="space-y-3">
-          {recipientNames.map((name, index) => {
-            const row = matches.matches?.[index] || {};
-            const isFileInstruction = row.status === "skipped" && row.recipient_name?.toLowerCase() === "file";
-            const firstInHandwrittenPhrase = row.source_type !== "handwritten" || !matches.matches
-              ?.slice(0, index)
-              .some((previous) => previous.source_type === "handwritten" && previous.source_page === row.source_page && previous.source_text === row.source_text);
-            return <div key={row.source_id || index} className="rounded-md border p-3 space-y-2">
-              <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
-                <span className="rounded bg-muted px-2 py-1 uppercase tracking-wide">{row.source_type || "extracted"}</span>
-                <span className="text-muted-foreground">Page {row.source_page || "—"}</span>
-              </div>
-              {firstInHandwrittenPhrase && <p className="text-sm"><span className="text-muted-foreground">{row.source_type === "handwritten" ? "Handwritten text:" : "Extracted:"}</span> {row.source_text || row.extracted_text || "—"}</p>}
-              {row.source_type === "handwritten" && <p className="text-xs text-muted-foreground">Separate item sent for matching: <span className="font-medium text-foreground">{row.extracted_text || "—"}</span></p>}
-              {isFileInstruction ? <div role="status" className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">This circular should be added to the file. It will not be added as an email recipient.</div> : <label className="block space-y-1 text-sm font-medium">Resolved name<Input aria-label={`Resolved recipient ${index + 1}`} value={name} onChange={(event) => setRecipientNames((current) => current.map((value, i) => i === index ? event.target.value : value))} placeholder="Canonical faculty name" /></label>}
-              {row.candidates?.length > 0 && <div className="text-xs text-muted-foreground">Closest knowledge base entries: {row.candidates.map((candidate) => `${candidate.faculty_name}${candidate.recipient_kind === "group" ? " · student group" : candidate.recipient_kind === "non_recipient" ? " · filing instruction" : ""} (${Math.round(candidate.similarity * 100)}%)`).join(" · ")}</div>}
-              {row.emails?.length > 0 && <div className="text-xs font-mono text-success">{row.emails.join(", ")}</div>}
-            </div>;
-          })}
+        {recipientNames.length > 0 ? <div className="overflow-x-auto rounded-lg border">
+          <table className="w-full min-w-[760px] table-fixed text-left text-sm">
+            <thead className="bg-muted/50 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              <tr>
+                <th scope="col" className="w-[30%] px-4 py-3">Extracted name</th>
+                <th scope="col" className="w-[32%] px-4 py-3">Resolved name</th>
+                <th scope="col" className="w-[38%] px-4 py-3">Email</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y">
+              {recipientNames.map((name, index) => {
+                const row = matches.matches?.[index] || {};
+                const isFileInstruction = row.status === "skipped" && row.recipient_name?.toLowerCase() === "file";
+                const firstInHandwrittenPhrase = row.source_type !== "handwritten" || !matches.matches
+                  ?.slice(0, index)
+                  .some((previous) => previous.source_type === "handwritten" && previous.source_page === row.source_page && previous.source_text === row.source_text);
+                const selectedCandidate = row.candidates?.find((candidate) => candidate.faculty_id === row.faculty_id)
+                  || row.candidates?.find((candidate) => candidate.faculty_name === row.recipient_name);
+                const alternateCandidates = (row.candidates || []).filter((candidate) => candidate !== selectedCandidate);
+                const rowEdited = row.recipient_name !== name;
+
+                return <tr key={row.source_id || index} className="align-top">
+                  <td className="px-4 py-4">
+                    <div className="font-medium text-foreground">{row.extracted_text || row.source_text || "—"}</div>
+                    <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                      <span className="rounded bg-muted px-1.5 py-0.5 uppercase tracking-wide">{row.source_type || "extracted"}</span>
+                      {row.source_page && <span>Page {row.source_page}</span>}
+                    </div>
+                    {row.source_type === "handwritten" && firstInHandwrittenPhrase && row.source_text !== row.extracted_text && <p className="mt-2 text-xs text-muted-foreground">Original note: {row.source_text}</p>}
+                  </td>
+                  <td className="px-4 py-4">
+                    {isFileInstruction ? <div className="space-y-2">
+                      <div className="font-medium">File{selectedCandidate ? ` (${Math.round(selectedCandidate.similarity * 100)}% match)` : ""}</div>
+                      {alternateCandidates.map((candidate) => <div key={candidate.faculty_id} className="text-xs text-muted-foreground">Alternative: {candidate.faculty_name} ({Math.round(candidate.similarity * 100)}%)</div>)}
+                    </div> : <div className="space-y-2">
+                      <Input aria-label={`Resolved recipient ${index + 1}`} value={name} onChange={(event) => setRecipientNames((current) => current.map((value, i) => i === index ? event.target.value : value))} placeholder="Canonical faculty name" />
+                      {selectedCandidate && <p className="text-xs font-medium text-success">{Math.round(selectedCandidate.similarity * 100)}% knowledge-base match</p>}
+                      {alternateCandidates.map((candidate) => <p key={candidate.faculty_id} className="text-xs text-muted-foreground">Alternative: {candidate.faculty_name} ({Math.round(candidate.similarity * 100)}%)</p>)}
+                      {rowEdited && <p className="text-xs text-warning">Look up the edited name to refresh its email.</p>}
+                    </div>}
+                  </td>
+                  <td className="px-4 py-4">
+                    {isFileInstruction ? <div role="status" className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">No routing. Add this circular to the file.</div>
+                      : rowEdited ? <span className="text-xs text-muted-foreground">Run name lookup to update email.</span>
+                        : row.emails?.length ? <ul className="space-y-1 font-mono text-xs text-success">{row.emails.map((email) => <li key={email} className="break-all">{email}</li>)}</ul>
+                          : <span className="text-xs text-danger">No email matched</span>}
+                  </td>
+                </tr>;
+              })}
+            </tbody>
+          </table>
         </div> : <p className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">No recipient names were extracted from this circular.</p>}
 
         {recipientNames.length > 0 && <div className="flex flex-wrap gap-2">
