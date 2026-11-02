@@ -30,10 +30,9 @@ class HandwritingService:
         if self.initialized:
             return
         if not TRANSFORMERS_AVAILABLE:
-            # No transformers available; use lightweight fallback indicating availability.
-            self.is_available = True
-            self.load_error = "transformers not installed; using fallback stub."
-            logger.info("[HandwritingService] Transformers not available; fallback mode enabled.")
+            self.is_available = False
+            self.load_error = "transformers not installed; using detected OCR text instead."
+            logger.info("[HandwritingService] Transformers not available; extracted OCR text will be preserved.")
             self.initialized = True
             return
 
@@ -68,9 +67,9 @@ class HandwritingService:
         self._initialize_model()
 
         if not self.is_available or self.model is None or self.processor is None:
-            # Fallback stub: return generic placeholder when TrOCR model unavailable.
-            logger.debug("[HandwritingService] Fallback returning generic placeholder.")
-            return "handwritten", None
+            # Returning a placeholder here overwrote valid line OCR (and leaked into routing).
+            logger.debug("[HandwritingService] TrOCR unavailable; preserving primary OCR text.")
+            return None, None
 
         try:
             if image.mode != "RGB":
@@ -90,7 +89,7 @@ class HandwritingService:
             cleaned_text = generated_text.strip()
             logger.info(f"[HandwritingService] TrOCR raw inference output: '{cleaned_text}'")
 
-            if cleaned_text:
+            if cleaned_text and cleaned_text.casefold().strip(" .,:;-") != "handwritten":
                 return cleaned_text, None  # TrOCR does not output calibrated confidence by default
             return None, None
         except Exception as e:

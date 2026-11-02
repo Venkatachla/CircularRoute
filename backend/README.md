@@ -1,17 +1,18 @@
 # CircularRoute — Backend OCR & Copy-to Extraction Service
 
-FastAPI-based backend service for extracting "Copy to" / recipient distribution sections from circular PDFs and images.
+FastAPI-based backend service for extracting recipient text, resolving noisy names with retrieval and Groq, and routing circulars by email.
 
 ---
 
 ## 1. Overview & Core Philosophy
 
-The backend's single responsibility is:
-> **Accept a circular (PDF or image) → Locate "Copy to" / distribution section → Extract printed + relevant handwritten recipients exactly as written → Return structured JSON file in `backend/outputs/`.**
+The pipeline is: **extract printed and handwritten text → retrieve the two closest knowledge-base entries → ask Groq to resolve each phrase → look up faculty or student emails and continue routing.** A handwritten file instruction is shown as a filing notice and is never routed as an email recipient.
 
 ### **Design Principle: READ → PRESERVE → STRUCTURE**
 - **Preserves exact original strings**: Names (e.g. `Dr. R. K. Patil`), designations (`HOD - CSE`), abbreviations (`PO - CSE`, `Dean Acad.`), and short forms.
-- **NO semantic matching/resolution**: Does NOT expand abbreviations, lookup employee databases, or infer email addresses.
+- OCR text is preserved as extracted. Name resolution is a separate step and never edits the source OCR text.
+- The resolver receives printed and handwritten phrases with their two closest candidates. Its knowledge base includes faculty aliases, the student group, and a non-recipient filing instruction for `file`.
+- Email addresses come from `recipient_email_map.json` or the faculty directory in `temp_data.xlsx`; the LLM never chooses an email address.
 
 ---
 
@@ -93,6 +94,8 @@ The server will be available at:
 ### 3. Get Extracted Data
 - **`GET /api/circular/{document_id}`**
 - Returns the JSON content for the specified document ID.
+
+After extraction, `POST /api/circular/{document_id}/resolve-recipients` runs embedding retrieval and Groq name resolution, then resolves selected canonical names to email addresses. Configure `GROQ_API_KEY` in `backend/.env`; `GROQ_MODEL` defaults to `qwen/qwen3.8-27b`, and `NAME_EMBEDDING_MODEL` defaults to `all-MiniLM-L6-v2`. Faculty names and aliases live in `backend/app/data/department_data.py`.
 
 ### 4. Download JSON Output
 - **`GET /api/circular/{document_id}/json`**
