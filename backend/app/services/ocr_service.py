@@ -88,6 +88,7 @@ SIGNATURE_OR_DATE_NOISE_PATTERN = re.compile(
 
 # Handwritten 'to' annotation marker
 HANDWRITTEN_TO_PATTERN = re.compile(r'^\s*to\s*[:\-\.]?\s*$', re.IGNORECASE)
+HANDWRITTEN_TO_WITH_CONTENT_PATTERN = re.compile(r'^\s*to\b\s*[:\-–\.]\s*(.*?)\s*$', re.IGNORECASE)
 
 
 class OCRService:
@@ -276,6 +277,65 @@ class OCRService:
                     break
 
             if header_idx is None:
+                # Some circulars have no printed "Copy To" label and instead add a
+                # handwritten "To: ..." line below the signatures. The old flow
+                # continued here before it ever inspected that handwritten line.
+                page_img = img_map.get(page_num)
+                lower_band_y = page_img.height * 0.52 if page_img else None
+                headerless_phrases = set()
+                for idx, line_item in enumerate(lines):
+                    line_text = str(line_item.get("text") or "").strip()
+                    bbox = line_item.get("bbox")
+                    if not line_text or (bbox and lower_band_y is not None and bbox[1] < lower_band_y):
+                        continue
+
+                    match = HANDWRITTEN_TO_WITH_CONTENT_PATTERN.match(line_text)
+                    if not match:
+                        continue
+
+                    phrase = match.group(1).strip(" :–-.")
+                    source_line = line_text
+                    confidence = line_item.get("confidence")
+                    if not phrase and HANDWRITTEN_TO_PATTERN.match(line_text):
+                        # OCR may separate the handwritten marker and recipients into
+                        # adjacent text boxes. Use the first line immediately below it.
+                        marker_y = bbox[1] if bbox else None
+                        for next_item in lines[idx + 1:]:
+                            next_text = str(next_item.get("text") or "").strip()
+                            next_box = next_item.get("bbox")
+                            if not next_text:
+                                continue
+                            if next_box and marker_y is not None and not (0 <= next_box[1] - marker_y <= 180):
+                                break
+                            if SIGNATURE_OR_DATE_NOISE_PATTERN.search(next_text) or ADDRESS_OR_BOILERPLATE_PATTERN.search(next_text):
+                                continue
+                            phrase = next_text
+                            source_line = f"{line_text} {next_text}"
+                            confidence = next_item.get("confidence", confidence)
+                            break
+
+                    if not phrase or SIGNATURE_OR_DATE_NOISE_PATTERN.search(phrase) or ADDRESS_OR_BOILERPLATE_PATTERN.search(phrase):
+                        continue
+                    normalized_phrase = self._normalize_text(phrase)
+                    if not normalized_phrase or normalized_phrase.casefold() in headerless_phrases:
+                        continue
+                    headerless_phrases.add(normalized_phrase.casefold())
+                    copy_to_found = True
+                    copy_to_pages.add(page_num)
+                    extracted_recipients.append(Recipient(
+                        raw_text=source_line,
+                        text=normalized_phrase,
+                        type="handwritten",
+                        confidence=confidence,
+                        source_page=page_num,
+                    ))
+                    extracted_handwritten.append(HandwrittenText(
+                        text=normalized_phrase,
+                        confidence=confidence,
+                        associated_with="copy_to",
+                        source_page=page_num,
+                        raw_ocr_text=phrase,
+                    ))
                 continue
 
             h_bbox = header_item.get("bbox")

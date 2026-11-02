@@ -36,3 +36,13 @@ def load_output_json(document_id: str, output_dir: Optional[Path] = None) -> Opt
 
     with open(file_path, "r", encoding="utf-8") as f:
         return json.load(f)
+
+
+def save_output_data(document_id: str, data: dict, output_dir: Optional[Path] = None) -> Path:
+    """Persist resolution metadata alongside the original OCR result."""
+    target_dir = output_dir or OUTPUT_DIR
+    target_dir.mkdir(parents=True, exist_ok=True)
+    file_path = target_dir / f"{document_id}.json"
+    with file_path.open("w", encoding="utf-8") as file:
+        json.dump(data, file, indent=2, ensure_ascii=False)
+    return file_path

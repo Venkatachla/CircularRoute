@@ -1,17 +1,19 @@
 import json
 import logging
 import re
+import asyncio
 from pathlib import Path
 from typing import Optional, List
-from fastapi import APIRouter, UploadFile, File, status
+from fastapi import APIRouter, UploadFile, File, status, HTTPException
 from fastapi.responses import JSONResponse, FileResponse
 from pydantic import BaseModel, Field
 
 from app.schemas.ocr_schema import ProcessResponse
 from app.services.document_service import document_service, is_allowed_file
-from app.services.json_service import load_output_json
+from app.services.json_service import load_output_json, save_output_data
 from app.services.recipient_service import recipient_service
 from app.services.recipient_mapping_service import recipient_mapping_service
+from app.services.name_resolution_service import name_resolution_service
 from app.services.email_service import email_service
 from app.services.distribution_service import distribution_service
 from app.schemas.distribution_schema import SendMailRequest, ResolveRecipientsRequest, EmailRecipientPayload
@@ -29,30 +31,89 @@ class HandwritingCorrectionRequest(BaseModel):
 
 
 def _resolve_circular_recipients(data, recipient_names=None):
-    extracted = data.get("recipients") or []
-    source_names = [
-        str((recipient.get("text") or recipient.get("raw_text") or "")).strip()
-        if isinstance(recipient, dict) else str(getattr(recipient, "text", "") or getattr(recipient, "raw_text", "")).strip()
-        for recipient in extracted
-    ]
-    names = recipient_names if recipient_names is not None else source_names
+    resolved_items = data.get("llm_resolved_recipients") or []
+    if not resolved_items:
+        return [], ["Resolve extracted names before sending."], []
+    names = recipient_names if recipient_names is not None else [item.get("recipient_name", "") for item in resolved_items]
+    if len(names) != len(resolved_items):
+        return [], ["Recipient list changed; resolve the names again before sending."], []
+    stored_names = [str(item.get("recipient_name") or "").strip() for item in resolved_items]
+    if recipient_names is not None and [str(name or "").strip() for name in names] != stored_names:
+        return [], ["Recipient names changed; resolve them again before sending."], []
     targets = []
     unresolved = []
     rows = []
     seen = set()
 
-    for index, extracted_name in enumerate(source_names):
-        name = str(names[index]).strip() if index < len(names) else ""
-        email = recipient_mapping_service.find_email(name) if name else None
-        rows.append({"extracted_name": extracted_name, "recipient_name": name, "status": "matched" if email else "unmatched"})
-        if not email:
-            unresolved.append(name or extracted_name or "Recipient name is empty")
-        elif email.casefold() not in seen:
-            seen.add(email.casefold())
-            targets.append(EmailRecipientPayload(name=name, email=email, department="General"))
-    for name in names[len(source_names):]:
-        unresolved.append(str(name).strip() or "Recipient name is empty")
+    for index, item in enumerate(resolved_items):
+        name = str(names[index] or "").strip()
+        if item.get("status") == "skipped" and name.casefold() == "file":
+            rows.append({**item, "recipient_name": name, "emails": [], "status": "skipped"})
+            continue
+        match = recipient_mapping_service.resolve(name, item.get("faculty_id")) if name else {"status": "unmatched", "emails": []}
+        emails = match["emails"]
+        rows.append({**item, "recipient_name": name, "emails": emails, "status": match["status"]})
+        if match["status"] == "unmatched":
+            unresolved.append(name or item.get("extracted_text") or "Recipient name is empty")
+        for email in emails:
+            if email.casefold() not in seen:
+                seen.add(email.casefold())
+                targets.append(EmailRecipientPayload(name=name, email=email, department="General"))
     return targets, unresolved, rows
+
+
+def _extracted_name_items(data):
+    """Collect printed names and handwriting once, splitting handwriting instructions."""
+    def usable_handwriting_phrase(*values):
+        for value in values:
+            phrase = str(value or "").strip()
+            if phrase and phrase.casefold().strip(" .,:;-") not in {"handwritten", "unknown", "unreadable"}:
+                return phrase
+        return ""
+
+    items = []
+    for index, recipient in enumerate(data.get("recipients") or []):
+        if not isinstance(recipient, dict):
+            continue
+        text = str(recipient.get("text") or recipient.get("raw_text") or "").strip()
+        source_type = recipient.get("type", "printed")
+        if not text:
+            continue
+        if source_type == "handwritten":
+            continue
+        items.append({"source_id": f"printed-{index}", "source_type": "printed", "source_page": recipient.get("source_page"), "text": text, "source_text": text})
+
+    handwriting = []
+    seen_phrases = set()
+    for recipient in data.get("recipients") or []:
+        if isinstance(recipient, dict) and recipient.get("type") == "handwritten":
+            # Old runs stored a generic TrOCR fallback in `text` but retained the useful
+            # line-recognition result in `raw_text`; recover it for re-resolution.
+            phrase = usable_handwriting_phrase(recipient.get("text"), recipient.get("raw_text"))
+            page = recipient.get("source_page")
+            if phrase and (phrase.casefold(), page) not in seen_phrases:
+                handwriting.append((phrase, page))
+                seen_phrases.add((phrase.casefold(), page))
+    for note in data.get("handwritten_text") or []:
+        if not isinstance(note, dict):
+            continue
+        phrase = usable_handwriting_phrase(note.get("corrected_text"), note.get("text"), note.get("raw_ocr_text"))
+        page = note.get("source_page")
+        if phrase and (phrase.casefold(), page) not in seen_phrases:
+            handwriting.append((phrase, page))
+            seen_phrases.add((phrase.casefold(), page))
+
+    for phrase_index, (phrase, page) in enumerate(handwriting):
+        parts = recipient_service.separate_instructions(phrase) or [phrase]
+        for part_index, part in enumerate(parts):
+            items.append({
+                "source_id": f"handwritten-{phrase_index}-{part_index}",
+                "source_type": "handwritten",
+                "source_page": page,
+                "text": part,
+                "source_text": phrase,
+            })
+    return items
 
 
 @router.get("/health", summary="Health check endpoint")
@@ -175,12 +236,45 @@ async def send_circular_mail(document_id: str, request: SendMailRequest):
     return {"status": "success" if sent == len(results) else "partial" if sent else "failed", "document_id": document_id, "total": len(results), "sent": sent, "results": results, "distribution": distribution.model_dump()}
 
 
-@router.post("/circular/{document_id}/resolve-recipients", summary="Resolve recipient names using the backend JSON map")
+@router.post("/circular/{document_id}/resolve-recipients", summary="Resolve printed and handwritten OCR names with Groq and retrieve mapped emails")
 async def resolve_circular_recipients(document_id: str, request: ResolveRecipientsRequest):
     data = load_output_json(document_id)
     if not data:
         return JSONResponse(status_code=404, content={"status": "error", "message": f"Circular '{document_id}' was not found."})
-    targets, unresolved, rows = _resolve_circular_recipients(data, request.recipient_names or None)
+    extracted_items = _extracted_name_items(data)
+    if not extracted_items:
+        return {"status": "unresolved", "document_id": document_id, "matches": [], "unresolved": ["No printed or handwritten names were extracted."]}
+    try:
+        name_overrides = request.recipient_names or None
+        if name_overrides and len(name_overrides) != len(extracted_items):
+            # A legacy extraction may have produced one placeholder card for a line
+            # that now splits into several real names. Drop only that stale placeholder.
+            if all(str(name or "").strip().casefold() == "handwritten" for name in name_overrides):
+                name_overrides = None
+        resolved = await asyncio.to_thread(
+            name_resolution_service.resolve,
+            extracted_items,
+            name_overrides,
+        )
+    except Exception as exc:
+        logger.exception("Recipient name resolution failed for %s", document_id)
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+    for row in resolved:
+        if row["status"] == "skipped":
+            continue
+        if row["recipient_name"]:
+            match = recipient_mapping_service.resolve(row["recipient_name"], row.get("faculty_id"))
+            row["emails"] = match["emails"]
+            if match["status"] == "unmatched":
+                row["status"] = "unmatched"
+        else:
+            row["emails"] = []
+            row["status"] = "unmatched"
+
+    data["llm_resolved_recipients"] = resolved
+    save_output_data(document_id, data)
+    targets, unresolved, rows = _resolve_circular_recipients(data)
     return {
         "status": "resolved" if targets and not unresolved else "unresolved",
         "document_id": document_id,

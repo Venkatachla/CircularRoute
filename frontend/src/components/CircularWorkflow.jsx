@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { uploadCircular } from "@/services/circularService";
 import { resolveCircularRecipients, sendCircularMail } from "@/services/distributionService";
 
-const STEPS = ["Upload circular", "Extract recipient names", "Look up names in recipient JSON"];
+const STEPS = ["Upload circular", "Extract printed and handwritten names", "Resolve names and find emails"];
 
 export default function CircularWorkflow() {
   const [file, setFile] = useState(null);
@@ -50,7 +50,7 @@ export default function CircularWorkflow() {
       setStage("matching");
       const resolved = await resolveCircularRecipients(extracted.document_id);
       setMatches(resolved);
-      setRecipientNames((resolved.matches || []).map((row) => row.recipient_name));
+      setRecipientNames((resolved.matches || []).map((row) => row.recipient_name || row.extracted_text || ""));
       setStage("complete");
     } catch (err) {
       setStage("error");
@@ -67,7 +67,8 @@ export default function CircularWorkflow() {
     try {
       const result = await resolveCircularRecipients(documentId, recipientNames);
       setMatches(result);
-      toast.success(result.status === "resolved" ? "All recipient names matched" : "Some names do not have an email mapping yet");
+      setRecipientNames((result.matches || []).map((row) => row.recipient_name || row.extracted_text || ""));
+      toast.success(result.status === "resolved" ? "Names resolved and emails found" : "Some names need review or have no email mapping");
     } catch (err) {
       setError(err.message || "Could not look up recipient names.");
     } finally {
@@ -106,11 +107,11 @@ export default function CircularWorkflow() {
   const canSend = matches?.status === "resolved" && !namesChanged && !sending && !processing && !resolving && !sent;
 
   return (
-    <main className="mx-auto w-full max-w-3xl space-y-7">
+    <main className="mx-auto w-full max-w-5xl space-y-7">
       <header className="space-y-2">
         <p className="text-xs font-semibold uppercase tracking-[0.16em] text-brand">CircularRoute</p>
         <h1 className="text-3xl font-semibold tracking-tight">Send a circular</h1>
-        <p className="text-sm text-muted-foreground">Upload a PDF or image, review the extracted recipient names, then send the circular.</p>
+        <p className="text-sm text-muted-foreground">Upload a PDF or image. Printed names and handwritten notes are resolved against the faculty knowledge base before email lookup.</p>
       </header>
 
       <section className="card-surface space-y-4 p-5 sm:p-6">
@@ -118,7 +119,7 @@ export default function CircularWorkflow() {
         <UploadDropzone onFile={selectFile} disabled={processing || sending} />
         {file && <div className="flex items-center gap-2 rounded-md border px-3 py-2 text-sm"><FileText className="size-4 text-brand" /><span className="min-w-0 flex-1 truncate">{file.name}</span><span className="text-xs text-muted-foreground">{Math.max(1, Math.round(file.size / 1024))} KB</span></div>}
         <Button size="lg" onClick={processFile} disabled={!file || processing || sending}>
-          {processing ? <><Loader2 className="animate-spin" />{stage === "matching" ? "Looking up names…" : "Extracting recipient names…"}</> : <><UploadCloud />Upload circular</>}
+          {processing ? <><Loader2 className="animate-spin" />{stage === "matching" ? "Resolving names and emails…" : "Extracting printed and handwritten text…"}</> : <><UploadCloud />Upload circular</>}
         </Button>
 
         {stage !== "idle" && <ol className="grid gap-2 border-t pt-4 sm:grid-cols-3">
@@ -135,19 +136,68 @@ export default function CircularWorkflow() {
 
       {matches && <section className="card-surface space-y-4 p-5 sm:p-6">
         <div className="flex items-start justify-between gap-3">
-          <div><h2 className="font-semibold">2. Extracted recipient names</h2><p className="mt-1 text-sm text-muted-foreground">Edit a name if needed, then look it up in the backend JSON map.</p></div>
+          <div><h2 className="font-semibold">2. Extracted and resolved recipients</h2><p className="mt-1 text-sm text-muted-foreground">The AI sees printed names and handwritten text, compares them with the two closest knowledge base entries, then resolves emails from the backend directory.</p></div>
           {matches.status === "resolved" && !namesChanged && <span className="inline-flex items-center gap-1.5 text-sm font-medium text-success"><CheckCircle2 className="size-4" />Mapped</span>}
         </div>
 
-        {recipientNames.length > 0 ? <div className="space-y-2">
-          {recipientNames.map((name, index) => <Input key={index} aria-label={`Recipient name ${index + 1}`} value={name} onChange={(event) => setRecipientNames((current) => current.map((value, i) => i === index ? event.target.value : value))} placeholder="Recipient name" />)}
+        {recipientNames.length > 0 ? <div className="overflow-x-auto rounded-lg border">
+          <table className="w-full min-w-[760px] table-fixed text-left text-sm">
+            <thead className="bg-muted/50 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              <tr>
+                <th scope="col" className="w-[30%] px-4 py-3">Extracted name</th>
+                <th scope="col" className="w-[32%] px-4 py-3">Resolved name</th>
+                <th scope="col" className="w-[38%] px-4 py-3">Email</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y">
+              {recipientNames.map((name, index) => {
+                const row = matches.matches?.[index] || {};
+                const isFileInstruction = row.status === "skipped" && row.recipient_name?.toLowerCase() === "file";
+                const firstInHandwrittenPhrase = row.source_type !== "handwritten" || !matches.matches
+                  ?.slice(0, index)
+                  .some((previous) => previous.source_type === "handwritten" && previous.source_page === row.source_page && previous.source_text === row.source_text);
+                const selectedCandidate = row.candidates?.find((candidate) => candidate.faculty_id === row.faculty_id)
+                  || row.candidates?.find((candidate) => candidate.faculty_name === row.recipient_name);
+                const alternateCandidates = (row.candidates || []).filter((candidate) => candidate !== selectedCandidate);
+                const rowEdited = row.recipient_name !== name;
+
+                return <tr key={row.source_id || index} className="align-top">
+                  <td className="px-4 py-4">
+                    <div className="font-medium text-foreground">{row.extracted_text || row.source_text || "—"}</div>
+                    <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                      <span className="rounded bg-muted px-1.5 py-0.5 uppercase tracking-wide">{row.source_type || "extracted"}</span>
+                      {row.source_page && <span>Page {row.source_page}</span>}
+                    </div>
+                    {row.source_type === "handwritten" && firstInHandwrittenPhrase && row.source_text !== row.extracted_text && <p className="mt-2 text-xs text-muted-foreground">Original note: {row.source_text}</p>}
+                  </td>
+                  <td className="px-4 py-4">
+                    {isFileInstruction ? <div className="space-y-2">
+                      <div className="font-medium">File{selectedCandidate ? ` (${Math.round(selectedCandidate.similarity * 100)}% match)` : ""}</div>
+                      {alternateCandidates.map((candidate) => <div key={candidate.faculty_id} className="text-xs text-muted-foreground">Alternative: {candidate.faculty_name} ({Math.round(candidate.similarity * 100)}%)</div>)}
+                    </div> : <div className="space-y-2">
+                      <Input aria-label={`Resolved recipient ${index + 1}`} value={name} onChange={(event) => setRecipientNames((current) => current.map((value, i) => i === index ? event.target.value : value))} placeholder="Canonical faculty name" />
+                      {selectedCandidate && <p className="text-xs font-medium text-success">{Math.round(selectedCandidate.similarity * 100)}% knowledge-base match</p>}
+                      {alternateCandidates.map((candidate) => <p key={candidate.faculty_id} className="text-xs text-muted-foreground">Alternative: {candidate.faculty_name} ({Math.round(candidate.similarity * 100)}%)</p>)}
+                      {rowEdited && <p className="text-xs text-warning">Look up the edited name to refresh its email.</p>}
+                    </div>}
+                  </td>
+                  <td className="px-4 py-4">
+                    {isFileInstruction ? <div role="status" className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">No routing. Add this circular to the file.</div>
+                      : rowEdited ? <span className="text-xs text-muted-foreground">Run name lookup to update email.</span>
+                        : row.emails?.length ? <ul className="space-y-1 font-mono text-xs text-success">{row.emails.map((email) => <li key={email} className="break-all">{email}</li>)}</ul>
+                          : <span className="text-xs text-danger">No email matched</span>}
+                  </td>
+                </tr>;
+              })}
+            </tbody>
+          </table>
         </div> : <p className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">No recipient names were extracted from this circular.</p>}
 
         {recipientNames.length > 0 && <div className="flex flex-wrap gap-2">
           <Button variant="outline" onClick={lookupEditedNames} disabled={resolving || processing || sending}>
             {resolving ? <><Loader2 className="animate-spin" />Looking up names…</> : "Look up names"}
           </Button>
-          {matches.matches?.map((row, index) => row.status === "unmatched" && row.recipient_name === recipientNames[index] ? <span key={`unmatched-${index}`} className="self-center text-xs text-muted-foreground">No JSON mapping for: {row.recipient_name || "(empty name)"}</span> : null)}
+          {matches.matches?.map((row, index) => row.status === "unmatched" && row.recipient_name === recipientNames[index] ? <span key={`unmatched-${index}`} className="self-center text-xs text-muted-foreground">No email found for: {row.recipient_name || row.extracted_text || "(empty name)"}</span> : null)}
         </div>}
 
         <label className="block space-y-2 text-sm font-medium">Email subject<Input value={subject} onChange={(event) => setSubject(event.target.value)} placeholder="Enter email subject" maxLength={200} /></label>
@@ -157,7 +207,7 @@ export default function CircularWorkflow() {
         {sent && <p className="flex items-center gap-2 text-sm text-success"><Mail className="size-4" />Resend accepted the circular for the mapped recipient emails.</p>}
       </section>}
 
-      {matches?.status !== "resolved" && matches && <div role="status" className="flex items-start gap-2 rounded-md border border-warning/30 bg-warning-soft p-3 text-sm"><AlertCircle className="mt-0.5 size-4 shrink-0" /><span>Some names do not yet have an email mapping. Add name and email pairs to <code>backend/recipient_email_map.json</code>, then look up the names again.</span></div>}
+      {matches?.status !== "resolved" && matches && <div role="status" className="flex items-start gap-2 rounded-md border border-warning/30 bg-warning-soft p-3 text-sm"><AlertCircle className="mt-0.5 size-4 shrink-0" /><span>Some extracted text could not be confidently resolved to a known recipient or email. Review the name, edit it if needed, then look it up again.</span></div>}
       {error && <div role="alert" className="flex items-start gap-2 rounded-md border border-danger/30 bg-danger-soft p-3 text-sm text-danger"><AlertCircle className="mt-0.5 size-4 shrink-0" /><span className="whitespace-pre-line">{error}</span></div>}
     </main>
   );

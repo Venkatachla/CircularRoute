@@ -13,7 +13,69 @@
     {
       "name": "Vijay V Patil",
       "email": "vijaypatil13@gmail.com",
-      "aliases": []
-    }
+      "aliases": ["Vijay Veerabhadra Patil"]
+    },
+    {
+      "name": "Students",
+      "emails": [
+        "1ms23cs211@msrit.edu",
+        "1ms23cs212@msrit.edu",
+        "1ms23cs213@msrit.edu",
+        "1ms23cs214@msrit.edu"
+      ],
+      "aliases": ["student", "all students"]
+    },
+    {
+      "name": "file",
+      "aliases": [],
+      "skip": true
+    }, {
+    "name": "Vijay Kumar L K",
+    "email": "vijaykumarlk@example.com"
+  },
+  {
+    "name": "Ananya Bhat",
+    "email": "ananya.bhat@example.com"
+  },
+  {
+    "name": "Ravi Shankar K",
+    "email": "ravi.shankar@example.com"
+  },
+  {
+    "name": "Meghana Rao",
+    "email": "meghana.rao@example.com"
+  },
+  {
+    "name": "Suresh Kumar P",
+    "email": "sureshkumar.p@example.com"
+  },
+  {
+    "name": "Nandini R S",
+    "email": "nandini.rs@example.com"
+  },
+  {
+    "name": "Deepak M",
+    "email": "deepak.m@example.com"
+  },
+  {
+    "name": "Kiran S",
+    "email": "kiran.s@example.com"
+  },
+  {
+    "name": "Priya V N",
+    "email": "priya.vn@example.com"
+  },
+  {
+    "name": "Ganesh M S",
+    "email": "ganesh.ms@example.com"
+  },
+  {
+    "name": "Tejaswini P K",
+    "email": "tejaswini.pk@example.com"
+  },
+  {
+    "name": "Shivraj R D",
+    "email": "shivraj.rd@example.com"
+  }
   ]
 }
